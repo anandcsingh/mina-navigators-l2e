@@ -45,67 +45,67 @@ describe('SecretMessage', () => {
     await txn.sign([deployerKey, zkAppPrivateKey]).send();
   }
 
-  // it('generates and deploys the `SecretMessage` smart contract', async () => {
-  //   await localDeploy();
-  //   const num = zkApp.messageCount.get();
-  //   expect(num).toEqual(Field(0));
-  // });
+  it('generates and deploys the `SecretMessage` smart contract', async () => {
+    await localDeploy();
+    const num = zkApp.messageCount.get();
+    expect(num).toEqual(Field(0));
+  });
 
-  // it('correctly increments the messageCount state on the `SecretMessage` smart contract', async () => {
-  //   await localDeploy();
+  it('correctly increments the messageCount state on the `SecretMessage` smart contract', async () => {
+    await localDeploy();
 
-  //   // update transaction
-  //   let txn = await Mina.transaction(senderAccount, () => {
-  //     zkApp.storeValidMessages();
-  //   });
-  //   await txn.prove();
-  //   await txn.sign([senderKey]).send();
+    // update transaction
+    let txn = await Mina.transaction(senderAccount, () => {
+      zkApp.storeValidMessages();
+    });
+    await txn.prove();
+    await txn.sign([senderKey]).send();
 
-  //   let updatedNum = zkApp.messageCount.get();
-  //   expect(updatedNum).toEqual(Field(1));
+    let updatedNum = zkApp.messageCount.get();
+    expect(updatedNum).toEqual(Field(1));
 
-  //   // update transaction
-  //   txn = await Mina.transaction(senderAccount, () => {
-  //     zkApp.storeValidMessages();
-  //   });
-  //   await txn.prove();
-  //   await txn.sign([senderKey]).send();
-  //   updatedNum = zkApp.messageCount.get();
-  //   expect(updatedNum).toEqual(Field(2));
-  // });
+    // update transaction
+    txn = await Mina.transaction(senderAccount, () => {
+      zkApp.storeValidMessages();
+    });
+    await txn.prove();
+    await txn.sign([senderKey]).send();
+    updatedNum = zkApp.messageCount.get();
+    expect(updatedNum).toEqual(Field(2));
+  });
 
-  // it('can store eligible addresses', async () => {
-  //   await localDeploy();
+  it('can store eligible addresses', async () => {
+    await localDeploy();
 
-  //   const addressesTree = new MerkleTree(8);
-  //   addressesTree.setLeaf(0n, Poseidon.hash(senderAccount.toFields()));
-  //   const witness = new EligibleAddressesWitness(addressesTree.getWitness(0n));
+    const addressesTree = new MerkleTree(8);
+    addressesTree.setLeaf(0n, Poseidon.hash(senderAccount.toFields()));
+    const witness = new EligibleAddressesWitness(addressesTree.getWitness(0n));
 
-  //   // update transaction
-  //   let txn = await Mina.transaction(senderAccount, () => {
-  //     zkApp.storeEligibleAddresses(senderAccount, witness);
-  //   });
-  //   await txn.prove();
-  //   await txn.sign([senderKey]).send();
+    // update transaction
+    let txn = await Mina.transaction(senderAccount, () => {
+      zkApp.storeEligibleAddresses(senderAccount, witness);
+    });
+    await txn.prove();
+    await txn.sign([senderKey]).send();
 
-  //   let root = zkApp.eligibleAddressesRoot.get();
-  //   console.log('first root', root.toString());
-  //   expect(root).toEqual(addressesTree.getRoot());
+    let root = zkApp.eligibleAddressesRoot.get();
+    console.log('first root', root.toString());
+    expect(root).toEqual(addressesTree.getRoot());
 
-  //   addressesTree.setLeaf(1n, Poseidon.hash(deployerAccount.toFields()));
-  //   const witness2 = new EligibleAddressesWitness(addressesTree.getWitness(1n));
+    addressesTree.setLeaf(1n, Poseidon.hash(deployerAccount.toFields()));
+    const witness2 = new EligibleAddressesWitness(addressesTree.getWitness(1n));
 
-  //   // update transaction
-  //   txn = await Mina.transaction(deployerAccount, () => {
-  //     zkApp.storeEligibleAddresses(deployerAccount, witness2);
-  //   });
-  //   await txn.prove();
-  //   await txn.sign([deployerKey]).send();
+    // update transaction
+    txn = await Mina.transaction(deployerAccount, () => {
+      zkApp.storeEligibleAddresses(deployerAccount, witness2);
+    });
+    await txn.prove();
+    await txn.sign([deployerKey]).send();
 
-  //   root = zkApp.eligibleAddressesRoot.get();
-  //   console.log('second root', root.toString());
-  //   expect(root).toEqual(addressesTree.getRoot());
-  // });
+    root = zkApp.eligibleAddressesRoot.get();
+    console.log('second root', root.toString());
+    expect(root).toEqual(addressesTree.getRoot());
+  });
 
   it('can store only 100 eligible addresses', async () => {
     await localDeploy();
