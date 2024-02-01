@@ -111,20 +111,24 @@ describe('SecretMessage', () => {
     await localDeploy();
 
     let i = 0;
+    let count = 99;
     const addressesTree = new MerkleTree(8);
-    for (; i < 100; i++) {
+    for (; i < count; i++) {
       addressesTree.setLeaf(BigInt(i), Poseidon.hash(senderAccount.toFields()));
     }
 
-    expect(i).toEqual(100);
+    expect(i).toEqual(count);
     let txn = await Mina.transaction(senderAccount, () => {
-      zkApp.setAddressesCount(Field(100));
+      zkApp.setAddressesCount(Field(count));
     });
     await txn.prove();
     await txn.sign([senderKey]).send();
+    let addressesCount = zkApp.eligibleAddressesCount.get();
+    console.log('addressesCount', addressesCount.toString());
+    expect(addressesCount).toEqual(Field(count));
 
-    addressesTree.setLeaf(100n, Poseidon.hash(senderAccount.toFields()));
-    let witness = new EligibleAddressesWitness(addressesTree.getWitness(BigInt(100)));
+    addressesTree.setLeaf(BigInt(count), Poseidon.hash(senderAccount.toFields()));
+    let witness = new EligibleAddressesWitness(addressesTree.getWitness(BigInt(count)));
 
         // update transaction
     txn = await Mina.transaction(senderAccount, () => {
@@ -132,5 +136,27 @@ describe('SecretMessage', () => {
     });
     await txn.prove();
     await txn.sign([senderKey]).send();
+
+    let newCount = count + 1;
+
+    addressesCount = zkApp.eligibleAddressesCount.get();
+    console.log('addressesCount', addressesCount.toString());
+    expect(addressesCount).toEqual(Field(newCount));
+
+    let failed = false;
+
+    try {
+      addressesTree.setLeaf(BigInt(newCount), Poseidon.hash(senderAccount.toFields()));
+      witness = new EligibleAddressesWitness(addressesTree.getWitness(BigInt(newCount)));
+      txn = await Mina.transaction(senderAccount, () => {
+        zkApp.storeEligibleAddresses(senderAccount, witness);
+      });
+      await txn.prove();
+      await txn.sign([senderKey]).send();
+    } catch (e) {
+      failed = true;
+    }
+    expect(failed).toEqual(true);
+
   });
 });
