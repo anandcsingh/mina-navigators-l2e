@@ -1,7 +1,4 @@
 import { Field, SmartContract, state, State, method, PublicKey, MerkleWitness, Poseidon, MerkleMapWitness, Sign, Signature, Nullifier, Circuit, Provable, MerkleMap } from 'o1js';
-import { Signable } from 'o1js/dist/node/bindings/lib/provable-bigint';
-import { sign } from 'o1js/dist/node/mina-signer/src/signature';
-
 
 export class SecretMessageWitness extends MerkleWitness(256) { }
 export class EligibleAddressesWitness extends MerkleWitness(8) { }
@@ -63,28 +60,50 @@ export class SecretMessage extends SmartContract {
 
   @method storeValidMessages(nullifier: Nullifier, secretMessage: Field, messageWitness: MerkleMapWitness, signature: Signature, addressWitness: EligibleAddressesWitness) {
    
-    let nullifierRoot = this.nullifierRoot.getAndRequireEquals();
+    this.didNotStoreMessageBefore(nullifier);
+    
+    this.ensureWhitelistedAddress(signature, secretMessage, addressWitness);
 
-    nullifier.verify(this.sender.toFields());
-    let nullfierWitness = Provable.witness(MerkleMapWitness, () => 
-      NullifierTree.getWitness(nullifier.key())
-    );
-    nullifier.assertUnused(nullfierWitness, nullifierRoot);
-    let newRoot = nullifier.setUsed(nullfierWitness);
-    this.nullifierRoot.set(newRoot);
-    // current user check if they are eligible
+    this.validateMessage(secretMessage);
+
+    this.storeSecret(messageWitness, secretMessage);
+
+    this.incrementMessageCount();
+  }
+
+  private incrementMessageCount() {
+    const currentState = this.messageCount.getAndRequireEquals();
+    const newState = currentState.add(1);
+    this.messageCount.set(newState);
+  }
+
+  private storeSecret(messageWitness: MerkleMapWitness, secretMessage: Field) {
+    this.messagesRoot.getAndRequireEquals();
+    const [messageRoot, _] = messageWitness.computeRootAndKey(Poseidon.hash(secretMessage.toFields()));
+    this.messagesRoot.set(messageRoot);
+  }
+
+  private validateMessage(secretMessage: Field) {
+    secretMessage.assertNotEquals(Field(0));
+    // validate message according ot rules using bitwise operations?
+    // ...
+  }
+
+  private ensureWhitelistedAddress(signature: Signature, secretMessage: Field, addressWitness: EligibleAddressesWitness) {
     const addressRoot = this.eligibleAddressesRoot.getAndRequireEquals();
     signature.verify(this.sender, secretMessage.toFields()).assertTrue();
     const witnessRoot = addressWitness.calculateRoot(Poseidon.hash(this.sender.toFields()));
     witnessRoot.assertEquals(addressRoot);
+  }
 
-    // update messages root
-    this.messagesRoot.getAndRequireEquals();
-    const [messageRoot, _] = messageWitness.computeRootAndKey(Poseidon.hash(secretMessage.toFields()));
-    this.messagesRoot.set(messageRoot);
+  private didNotStoreMessageBefore(nullifier: Nullifier) {
+    let nullifierRoot = this.nullifierRoot.getAndRequireEquals();
 
-    const currentState = this.messageCount.getAndRequireEquals();
-    const newState = currentState.add(1);
-    this.messageCount.set(newState);
+    nullifier.verify(this.sender.toFields());
+    let nullfierWitness = Provable.witness(MerkleMapWitness, () => NullifierTree.getWitness(nullifier.key())
+    );
+    nullifier.assertUnused(nullfierWitness, nullifierRoot);
+    let newRoot = nullifier.setUsed(nullfierWitness);
+    this.nullifierRoot.set(newRoot);
   }
 }

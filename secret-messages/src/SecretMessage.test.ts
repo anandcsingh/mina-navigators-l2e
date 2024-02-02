@@ -1,13 +1,6 @@
 import { EligibleAddressesWitness, SecretMessage } from './SecretMessage';
 import { Field, Mina, PrivateKey, PublicKey, AccountUpdate, MerkleTree, Poseidon, MerkleMap, Sign, Signature, Nullifier } from 'o1js';
 
-/*
- * This file specifies how to test the `Add` example smart contract. It is safe to delete this file and replace
- * with your own tests.
- *
- * See https://docs.minaprotocol.com/zkapps for more info.
- */
-
 let proofsEnabled = false;
 
 describe('SecretMessage', () => {
@@ -45,34 +38,34 @@ describe('SecretMessage', () => {
     await txn.sign([deployerKey, zkAppPrivateKey]).send();
   }
 
-  // it('generates and deploys the `SecretMessage` smart contract', async () => {
-  //   await localDeploy();
-  //   const num = zkApp.messageCount.get();
-  //   expect(num).toEqual(Field(0));
-  // });
+  it('generates and deploys the `SecretMessage` smart contract', async () => {
+    await localDeploy();
+    const num = zkApp.messageCount.get();
+    expect(num).toEqual(Field(0));
+  });
 
-  // it('correctly increments the messageCount state on the `SecretMessage` smart contract', async () => {
-  //   await localDeploy();
+  it('correctly increments the messageCount state on the `SecretMessage` smart contract', async () => {
 
-  //   // update transaction
-  //   let txn = await Mina.transaction(senderAccount, () => {
-  //     zkApp.storeValidMessages();
-  //   });
-  //   await txn.prove();
-  //   await txn.sign([senderKey]).send();
+    await localDeploy();
 
-  //   let updatedNum = zkApp.messageCount.get();
-  //   expect(updatedNum).toEqual(Field(1));
+    let senderNullifier = getNullfier(senderAccount, senderKey);
+    let deployerNullfier = getNullfier(deployerAccount, deployerKey);
 
-  //   // update transaction
-  //   txn = await Mina.transaction(senderAccount, () => {
-  //     zkApp.storeValidMessages();
-  //   });
-  //   await txn.prove();
-  //   await txn.sign([senderKey]).send();
-  //   updatedNum = zkApp.messageCount.get();
-  //   expect(updatedNum).toEqual(Field(2));
-  // });
+    const addressesTree = new MerkleTree(8);
+    var { txn, addressWitness } = await whitelistAddress(addressesTree, senderAccount, zkApp, senderKey);
+
+    let map = new MerkleMap();
+    let message = Field(12345);
+    let mapIndex = Field(1);
+    txn = await setSecretMessage(map, mapIndex, message, senderKey, txn, senderAccount, zkApp, senderNullifier, addressWitness);
+    txn = await setSecretMessage(map, mapIndex, message, deployerKey, txn, deployerAccount, zkApp, deployerNullfier, addressWitness);
+
+    let count = zkApp.messageCount.get();
+    expect(count).toEqual(Field(1));
+
+    count = zkApp.messageCount.get();
+    expect(count).toEqual(Field(2));
+  });
 
   // it('can store eligible addresses', async () => {
   //   await localDeploy();
@@ -163,35 +156,15 @@ describe('SecretMessage', () => {
   it('can store secret message', async () => {
     await localDeploy();
 
-    let nullifiereMessage = senderAccount.toFields();
-    let jsonNullifier = Nullifier.createTestNullifier(nullifiereMessage, senderKey);
+    let jsonNullifier = getNullfier(senderAccount, senderKey);
 
     const addressesTree = new MerkleTree(8);
-    addressesTree.setLeaf(0n, Poseidon.hash(senderAccount.toFields()));
-    const addressWitness = new EligibleAddressesWitness(addressesTree.getWitness(0n));
-
-    let txn = await Mina.transaction(senderAccount, () => {
-      zkApp.storeEligibleAddresses(senderAccount, addressWitness);
-    });
-    await txn.prove();
-    await txn.sign([senderKey]).send();
+    var { txn, addressWitness } = await whitelistAddress(addressesTree, senderAccount, zkApp, senderKey);
 
     let map = new MerkleMap();
     let message = Field(12345);
     let mapIndex = Field(1);
-    map.set(mapIndex, Poseidon.hash(message.toFields()));
-    let messageWitness = map.getWitness(mapIndex);
-
-    console.log("map root", map.getRoot().toString());
-
-    let signature = Signature.create(senderKey, message.toFields());
-
-    txn = await Mina.transaction(senderAccount, () => {
-      zkApp.storeValidMessages(Nullifier.fromJSON(jsonNullifier), message, messageWitness, signature, addressWitness);
-    });
-
-    await txn.prove();
-    await txn.sign([senderKey]).send();
+    txn = await setSecretMessage(map, mapIndex, message, senderKey, txn, senderAccount, zkApp, jsonNullifier, addressWitness);
 
     let root = zkApp.messagesRoot.get();
     console.log('messages root', root.toString());
@@ -238,3 +211,36 @@ describe('SecretMessage', () => {
 
   // });
 });
+async function setSecretMessage(map: MerkleMap, mapIndex: Field, message: Field, senderKey: PrivateKey, txn: Mina.Transaction, senderAccount: PublicKey, zkApp: SecretMessage, jsonNullifier: any, addressWitness: EligibleAddressesWitness) {
+  map.set(mapIndex, Poseidon.hash(message.toFields()));
+  let messageWitness = map.getWitness(mapIndex);
+
+  let signature = Signature.create(senderKey, message.toFields());
+
+  txn = await Mina.transaction(senderAccount, () => {
+    zkApp.storeValidMessages(Nullifier.fromJSON(jsonNullifier), message, messageWitness, signature, addressWitness);
+  });
+
+  await txn.prove();
+  await txn.sign([senderKey]).send();
+  return txn;
+}
+
+async function whitelistAddress(addressesTree: MerkleTree, senderAccount: PublicKey, zkApp: SecretMessage, senderKey: PrivateKey) {
+  addressesTree.setLeaf(0n, Poseidon.hash(senderAccount.toFields()));
+  const addressWitness = new EligibleAddressesWitness(addressesTree.getWitness(0n));
+
+  let txn = await Mina.transaction(senderAccount, () => {
+    zkApp.storeEligibleAddresses(senderAccount, addressWitness);
+  });
+  await txn.prove();
+  await txn.sign([senderKey]).send();
+  return { txn, addressWitness };
+}
+
+function getNullfier(senderAccount: PublicKey, senderKey: PrivateKey) {
+  let nullifiereMessage = senderAccount.toFields();
+  let jsonNullifier = Nullifier.createTestNullifier(nullifiereMessage, senderKey);
+  return jsonNullifier;
+}
+
