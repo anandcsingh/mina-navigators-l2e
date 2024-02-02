@@ -48,6 +48,24 @@ export class SecretMessage extends SmartContract {
     this.eligibleAddressesCount.set(newAddressCount);
   }
 
+  @method storeValidMessagesTree(message: Field, messageWitness: SecretMessageWitness, signature: Signature, addressWitness: EligibleAddressesWitness) {
+   
+    // current user check if they are eligible
+    const addressRoot = this.eligibleAddressesRoot.getAndRequireEquals();
+    signature.verify(this.sender, message.toFields()).assertTrue();
+    const witnessRoot = addressWitness.calculateRoot(Poseidon.hash(this.sender.toFields()));
+    witnessRoot.assertEquals(addressRoot);
+
+    // update messages root
+    this.messagesRoot.getAndRequireEquals();
+    const newRoot = messageWitness.calculateRoot(Poseidon.hash(message.toFields()));
+    this.messagesRoot.set(newRoot);
+
+    const currentState = this.messageCount.getAndRequireEquals();
+    const newState = currentState.add(1);
+    this.messageCount.set(newState);
+  }
+
   @method storeValidMessages(message: Field, messageWitness: MerkleMapWitness, signature: Signature, addressWitness: EligibleAddressesWitness) {
    
     // current user check if they are eligible
