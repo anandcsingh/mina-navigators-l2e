@@ -1,11 +1,11 @@
-import { Field, SmartContract, state, State, method, PublicKey, MerkleWitness, Poseidon, MerkleMapWitness, Sign, Signature } from 'o1js';
+import { Field, SmartContract, state, State, method, PublicKey, MerkleWitness, Poseidon, MerkleMapWitness, Sign, Signature, Nullifier, Circuit, Provable, MerkleMap } from 'o1js';
 import { Signable } from 'o1js/dist/node/bindings/lib/provable-bigint';
 import { sign } from 'o1js/dist/node/mina-signer/src/signature';
 
 
 export class SecretMessageWitness extends MerkleWitness(256) { }
 export class EligibleAddressesWitness extends MerkleWitness(8) { }
-
+const NullifierTree = new MerkleMap();
 export class SecretMessage extends SmartContract {
   @state(Field) messageCount = State<Field>();
   @state(Field) eligibleAddressesCount = State<Field>();
@@ -19,7 +19,7 @@ export class SecretMessage extends SmartContract {
     this.eligibleAddressesCount.set(Field(0));
     this.eligibleAddressesRoot.set(Field(0));
     this.messagesRoot.set(Field(0));
-    this.nullifierRoot.set(Field(0));
+    this.nullifierRoot.set(NullifierTree.getRoot());
   }
 
   @method setEligibleAddressesRoot(newRoot: Field) {
@@ -48,17 +48,39 @@ export class SecretMessage extends SmartContract {
     this.eligibleAddressesCount.set(newAddressCount);
   }
 
-  @method storeValidMessages(message: Field, messageWitness: MerkleMapWitness, signature: Signature, addressWitness: EligibleAddressesWitness) {
+  @method useNullifier(nullifier: Nullifier) {
+    
+    let nullifierRoot = this.nullifierRoot.getAndRequireEquals();
+
+    nullifier.verify(this.sender.toFields());
+    let nullfierWitness = Provable.witness(MerkleMapWitness, () => 
+      NullifierTree.getWitness(nullifier.key())
+    );
+    nullifier.assertUnused(nullfierWitness, nullifierRoot);
+    let newRoot = nullifier.setUsed(nullfierWitness);
+    this.nullifierRoot.set(newRoot);
+  }
+
+  @method storeValidMessages(nullifier: Nullifier, secretMessage: Field, messageWitness: MerkleMapWitness, signature: Signature, addressWitness: EligibleAddressesWitness) {
    
+    let nullifierRoot = this.nullifierRoot.getAndRequireEquals();
+
+    nullifier.verify(this.sender.toFields());
+    let nullfierWitness = Provable.witness(MerkleMapWitness, () => 
+      NullifierTree.getWitness(nullifier.key())
+    );
+    nullifier.assertUnused(nullfierWitness, nullifierRoot);
+    let newRoot = nullifier.setUsed(nullfierWitness);
+    this.nullifierRoot.set(newRoot);
     // current user check if they are eligible
     const addressRoot = this.eligibleAddressesRoot.getAndRequireEquals();
-    signature.verify(this.sender, message.toFields()).assertTrue();
+    signature.verify(this.sender, secretMessage.toFields()).assertTrue();
     const witnessRoot = addressWitness.calculateRoot(Poseidon.hash(this.sender.toFields()));
     witnessRoot.assertEquals(addressRoot);
 
     // update messages root
     this.messagesRoot.getAndRequireEquals();
-    const [messageRoot, _] = messageWitness.computeRootAndKey(Poseidon.hash(message.toFields()));
+    const [messageRoot, _] = messageWitness.computeRootAndKey(Poseidon.hash(secretMessage.toFields()));
     this.messagesRoot.set(messageRoot);
 
     const currentState = this.messageCount.getAndRequireEquals();
